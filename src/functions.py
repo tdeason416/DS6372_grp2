@@ -11,10 +11,8 @@ import requests
 import nltk
 from datetime import date, datetime, timedelta
 from collections import Counter
-
-from sklearn import linear_model as lm
 from sklearn import ensemble as ens
-
+from sklearn import linear_model as lm
 from scipy import interp
 from itertools import cycle
 from sklearn.metrics import roc_curve, auc
@@ -62,7 +60,7 @@ def get_count(cell):
         cnt_dict[i[:2]] += 1
     return cnt_dict
 
-def get_feature_counts(df, sep=&):
+def get_feature_counts(df, sep='&'):
     '''
     extract number of catagories in each catagorical dataset
     features which are numeric will return a value of 1
@@ -82,7 +80,7 @@ def get_feature_counts(df, sep=&):
         features[col.split(sep)[0].strip()] += 1
     return pd.Series(features)
 
-def cv_build_model(df, y_col, nfolds=5, n_estimators, max_features='sqrt', 
+def cv_build_model(df, y_col, nfolds=5, n_estimators=100, max_features='sqrt', 
                     criterion='gini', min_samples_leaf=1, random_state=42):
     '''
     Input Dataframe ready for analysis ouputs probabilities of y_col (y col must be binary or bool)
@@ -105,10 +103,9 @@ def cv_build_model(df, y_col, nfolds=5, n_estimators, max_features='sqrt',
     random_state: int {default= 42}
         -   random seed for decision tree feature selection and bootstrap 
     --------
-    RETURNS (tuple with 2 values)
-    prob_folds: list of np.array dtype=float
+    RETURNS
+    prob_folds, atcual: tuple (list of np.array dtype=float, list of np.array dtype=bool)
         -   prob_folds contains the probability that a given value in the test_set is equal to 1
-    atcual: list of np.array dtype= (bool | binary int)
         -   atcual contains the atcual value for that datapoint
     '''
     X = df.copy()
@@ -118,7 +115,7 @@ def cv_build_model(df, y_col, nfolds=5, n_estimators, max_features='sqrt',
     random_state = np.random.RandomState(random_state)
     # Run classifier with cross-validation 
     cv = StratifiedKFold(nfolds)
-    classifier = ens.RandomForestClassifier(n_estimators=100,
+    classifier = ens.RandomForestClassifier(n_estimators=n_estimators,
                                             max_features=max_features, 
                                             bootstrap=True,
                                             n_jobs=-1,
@@ -134,7 +131,46 @@ def cv_build_model(df, y_col, nfolds=5, n_estimators, max_features='sqrt',
     for train, test in cv.split(X, y):
         prob_folds.append(classifier.fit(X.iloc[train], y.iloc[train]).predict_proba(X.iloc[test]))
         atcual.append(y.iloc[test])
-    return prob_folds.iloc[:,1], atcual
+    return prob_folds, atcual
+
+
+def cv_build_model_logres(df, y_col, nfolds=5, random_state=42):
+    '''
+    Input Dataframe ready for analysis ouputs probabilities of y_col (y col must be binary or bool)
+    --------
+    PARAMETERS
+    df: pd.DataFrame
+        -   Must contain all numerical or bool values
+    y_col: str
+        -   must be a column within df and contain only either binary or bool values
+    nfolds: int (default 5):
+        -   number of times to split dataframe between train and test sets (min value should be 3)
+    random_state: int {default= 42}
+        -   random seed for decision tree feature selection and bootstrap 
+    --------
+    RETURNS
+    prob_folds, atcual: tuple (list of np.array dtype=float, list of np.array dtype=bool)
+        -   prob_folds contains the probability that a given value in the test_set is equal to 1
+        -   atcual contains the atcual value for that datapoint
+    '''
+    X = df.copy()
+    y = X.pop(y_col)
+    n_samples, n_features = X.shape
+    ## Define random seed
+    random_state = np.random.RandomState(random_state)
+    # Run classifier with cross-validation 
+    cv = StratifiedKFold(nfolds)
+    classifier = lm.LogisticRegression(C=.6, max_iter=10000, n_jobs=-1, random_state=random_state) 
+    tprs = []
+    aucs = []
+    mean_fpr = np.linspace(0, 1, 100)
+
+    prob_folds = []
+    atcual = []
+    for train, test in cv.split(X, y):
+        prob_folds.append(classifier.fit(X.iloc[train], y.iloc[train]).predict_proba(X.iloc[test]))
+        atcual.append(y.iloc[test])
+    return prob_folds, atcual
 
 def find_auc(probs, atcual):
     '''
@@ -161,7 +197,7 @@ def find_auc(probs, atcual):
 
 def plot_auc(folds):
     '''
-    poop
+    plots ROC curve with area under curve for a given model
     --------
     PARAMETERS list of folds - (fpr, tpr, roc_auc)
     folds: list of indeterminite length tuples containing (fpr: array, tpr: array, roc_auc: float)
@@ -171,6 +207,10 @@ def plot_auc(folds):
             -   ratio of positive values predicted negative by the model
         * roc_auc: float
             -   area under the ROC curve
+    --------
+    RETURNS
+    None: 
+        - graph is returned from this funciton
     '''
     i=0
     for fpr, tpr, roc_auc in folds:
@@ -200,6 +240,5 @@ def plot_auc(folds):
     plt.ylim([-0.05, 1.05])
     plt.xlabel('False Positive Rate')
     plt.ylabel('True Positive Rate')
-    plt.title('Receiver operating characteristic')
     plt.legend(loc="lower right")
     plt.show()
