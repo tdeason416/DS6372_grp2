@@ -7,7 +7,7 @@ import requests
 import nltk
 from datetime import date, datetime, timedelta
 from collections import Counter
-import src.functions as func
+import functions as func
 
 ## Load data into Python
 data_2016 = pd.read_csv('data/ks-projects-201612.csv')
